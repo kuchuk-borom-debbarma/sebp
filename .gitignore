@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Local agent/tool state
+.claude/settings.local.json
+
+# Dependencies / build output (for when code lands here)
+node_modules/
+dist/
+build/
+.wrangler/
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
