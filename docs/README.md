@@ -17,7 +17,9 @@ before writing any code.
 |---|---|---|
 | **[Platform Overview](./platform-overview.md)** | Clients, stakeholders, non-technical readers | What sebp does, the applicant journey, the programme team's capabilities, the full feature list in plain language, and delivery phases. Safe to share externally. |
 | **[Technical Design](./technical-design.md)** | Engineering | Data model, stage engine, dynamic forms, document handling, notification pipeline, API surface, auth model, platform decisions, and build sequence. |
+| **[Codebase Structure](./codebase-structure.md)** | Engineering | **Read before writing any code.** Repository layout, module anatomy, dependency rules, ports, error model, testing rules, and enforcement. |
 | **[ADR 0001 — Tech stack](./adr/0001-tech-stack.md)** | Engineering | The stack decision, why each choice was made, what it costs, and which integrations are still unproven. |
+| **[ADR 0002 — Codebase structure](./adr/0002-codebase-structure.md)** | Engineering | Why module-first hexagonal, strict layering, HTTP-only testing at 100%, and what each costs. |
 
 ---
 
@@ -75,6 +77,9 @@ Full detail in [§13](./technical-design.md#13-build-sequence).
 
 ## Rules for contributors
 
+Full detail in [codebase-structure.md](./codebase-structure.md); enforced as Pad
+conventions that agents load before writing code (CONVE-11 to CONVE-19).
+
 1. **No hardcoded stages, fields, or document types.** Ever.
 2. **Server decides.** The client renders configuration; it never determines what is
    required or which transitions are legal.
@@ -83,8 +88,13 @@ Full detail in [§13](./technical-design.md#13-build-sequence).
 5. **Notifications never block the action that triggered them.**
 6. **All uploads are untrusted.** Validate at presign and confirm; never serve R2
    directly; scan before reviewers open anything.
-7. **Isolate the platform.** Cloudflare primitives live behind internal interfaces —
-   the stack is not final.
+7. **Isolate the platform.** Anything replaceable lives behind a port — including
+   R2, KV, Queues, the clock, and id generation.
+8. **Import barrels, never internals.** From outside a module the only legal path is
+   `@/modules/<name>`.
+9. **Failures are `Result` values**, not exceptions.
+10. **Tests go through HTTP** against real infrastructure, at 100% coverage. Port
+    substitution is allowed only to provoke failure paths.
 
 Expanded in [§15](./technical-design.md#15-rules-for-anyone-writing-code-here).
 
