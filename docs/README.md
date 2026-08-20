@@ -99,5 +99,18 @@ Full context in [§14](./technical-design.md#14-open-questions).
 
 ---
 
-*These documents are also tracked in Pad as **DOC-8** (technical) and **DOC-9**
-(overview). Keep both copies in sync when either changes.*
+## Pad workspace
+
+This project is tracked in a [Pad](https://getpad.dev) workspace — the two documents
+above also exist there as **DOC-8** (technical) and **DOC-9** (overview), alongside
+the project's conventions and playbooks.
+
+Pad runs in local mode, so that workspace lives in a SQLite database on one machine
+and syncs nowhere. `.pad.toml` in the repository root is only a pointer to it.
+Cloning this repo does **not** bring the workspace with it.
+
+[`docs/pad-export/`](./pad-export/) holds the actual backup and a restore path —
+see its [README](./pad-export/README.md).
+
+The markdown files in this directory are the source of truth for documentation; the
+Pad copies are a convenience. Keep them in sync when either changes.
