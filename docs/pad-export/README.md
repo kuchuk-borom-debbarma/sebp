@@ -13,10 +13,12 @@ you that pointer and nothing behind it. **These files are the actual backup.**
 | File | Purpose |
 |---|---|
 | `workspace-bundle.tar.gz` | **Complete backup.** Collections, items, comments, versions, links, and attachment blobs. One-command restore. |
-| `collections.json` | Collection definitions and field schemas (6) — human-readable |
-| `docs.json` | Documentation items with full bodies (2) — human-readable |
-| `conventions.json` | Project rules agents load before working (4) — human-readable |
-| `playbooks.json` | Invokable multi-step workflows (3) — human-readable |
+| `collections.json` | Collection definitions and field schemas — human-readable |
+| `docs.json` | Documentation items with full bodies — human-readable |
+| `conventions.json` | Project rules agents load before working — human-readable |
+| `playbooks.json` | Invokable multi-step workflows — human-readable |
+| `tasks.json`, `features.json`, `roadmap-items.json` | Work items — human-readable |
+| `roles.json` | Agent roles — human-readable |
 | `restore.py` | Replays the JSON files into an already-linked workspace |
 
 Two formats on purpose. The bundle is complete but opaque — a binary blob whose
@@ -67,7 +69,8 @@ Re-run after meaningful workspace changes:
 pad workspace export -o docs/pad-export/workspace-bundle.tar.gz
 
 pad collection list --format json > docs/pad-export/collections.json
-for c in docs conventions playbooks; do
+pad role list --format json > docs/pad-export/roles.json
+for c in docs conventions playbooks tasks features roadmap-items; do
   pad item list "$c" --all --format json --full > "docs/pad-export/$c.json"
 done
 ```
