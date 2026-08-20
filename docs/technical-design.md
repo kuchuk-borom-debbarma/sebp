@@ -63,15 +63,20 @@ and permissions are granted per role.
 
 ## 3. Architecture overview
 
-**Runtime:** Hono on Cloudflare Workers.
-**Chosen for now, may change** as requirements firm up — see §12.6 for what a move
-would cost.
+**Runtime:** Hono on Cloudflare Workers, API-only, in its own repository. The
+frontend is a separate TanStack Start app, also on Workers, reaching the API through
+a **Service Binding** — a direct Worker-to-Worker call with no network hop, so the
+API needs no public exposure to serve SSR traffic.
+
+Settled in [ADR 0001](./adr/0001-tech-stack.md). Providers remain replaceable behind
+ports — see §12.6.
 
 ```
-                          ┌──────────────────────────────┐
-   Browser ──────────────▶│  Hono Worker (API + SSR/SPA) │
-   (applicant / admin)    └──────────────┬───────────────┘
-                                         │
+   Browser ──▶ ┌─────────────────────────┐   Service   ┌──────────────────┐
+               │ TanStack Start (Worker) │  Binding    │  Hono API Worker │
+               │   SSR, public + app     │────────────▶│                  │
+               └─────────────────────────┘             └────────┬─────────┘
+                                                                │
         ┌────────────────┬───────────────┼────────────────┬───────────────┐
         ▼                ▼               ▼                ▼               ▼
    ┌─────────┐    ┌────────────┐   ┌──────────┐    ┌────────────┐  ┌───────────┐
@@ -637,11 +642,21 @@ double-advance an applicant.
 
 ## 11. Authentication and authorisation
 
-**Authentication** — email + password with verification, sessions in KV keyed by an
-opaque token in an `HttpOnly; Secure; SameSite=Lax` cookie. Prefer server-side
-sessions over JWTs: staff need the ability to revoke immediately. Phone
-verification by OTP through the §8.3 provider. Turnstile on signup. Add WebAuthn or
-SSO for staff later if warranted.
+**Authentication** — **better-auth**, running in the API rather than the frontend:
+auth split across two servers means two places that can disagree about who a user
+is. It covers email + password, email verification, phone OTP, and session
+management. Sessions stay server-side rather than JWT — staff need immediate
+revocation. Turnstile on signup.
+
+The SSR frontend forwards the session cookie on its server-side fetches. Both apps
+deploy under one parent domain (`app.sebp.com`, `api.sebp.com`, cookie scoped to
+`.sebp.com`) or SameSite rules break the session.
+
+⚠️ **better-auth owns its own schema.** Its `user` / `session` / `account` tables are
+library-shaped, and the `users` table sketched in §4.1 will not survive contact with
+it unchanged. Decide early whether the domain reads those tables directly or maps
+them behind a port. Note also that bcrypt is unavailable in Workers — any hashing
+outside better-auth must use WebCrypto PBKDF2 or a WASM argon2 build.
 
 **Authorisation** — role-based, roles as data:
 
@@ -663,7 +678,7 @@ be a shared helper, not repeated per handler — that is where these systems lea
 
 ### 12.1 D1 vs Postgres
 
-**Recommendation: D1 to start.**
+**Decided: D1, behind ports and adapters** ([ADR 0001](./adr/0001-tech-stack.md)).
 
 D1 is SQLite: it is co-located with Workers, requires no connection pooling, has no
 idle cost, and comfortably handles a programme's volume (thousands of applications,
@@ -675,16 +690,21 @@ small), no long-lived transactions, and modest write concurrency — all accepta
 for admin-paced workloads.
 
 **If** reporting needs grow into complex ad-hoc analytics over dynamic fields,
-Postgres via Hyperdrive with `jsonb` and GIN indexes is the escape hatch. Keep all
-database access behind a repository layer so that move touches one directory rather
-than every handler.
+Postgres via Hyperdrive with `jsonb` and GIN indexes is the escape hatch. All
+persistence sits behind domain-owned interfaces with D1 as one adapter, so that move
+adds an adapter rather than rewriting every handler. Drizzle reinforces this — the
+same query syntax targets both.
 
 ### 12.2 Frontend
 
-A Hono-served SPA (React) is the straightforward path, given how much of the UI is
-dynamic forms driven by runtime configuration — the admin console in particular is
-highly interactive and gains little from SSR. Public marketing pages and the
-programme's public event listings should be server-rendered for SEO.
+**TanStack Start on Cloudflare Workers, in a separate repository.** Server-rendered
+throughout, which covers SEO on the public programme and event pages; the
+authenticated app (dynamic forms, admin console) is behind login where indexing is
+irrelevant but SSR costs nothing given the Service Binding.
+
+Two repositories mean no compile-time link between API and client. A shared types
+package or generated client should land early — otherwise an API change breaks the
+frontend silently.
 
 ### 12.3 Indexing dynamic fields
 
@@ -714,13 +734,17 @@ notification failure rate, upload failure rate, SLA breaches. Alert on notificat
 delivery failure rate — silent notification failure is this system's quietest and
 most damaging outage.
 
-### 12.6 On the stack being provisional
+### 12.6 Keeping providers replaceable
 
-Hono is a standard Fetch-API framework, so the routing and handler layer ports to
-Node, Bun, or Deno with little change. The genuinely Cloudflare-specific surfaces
-are R2 bindings, KV, Queues, Cron Triggers, and D1. Isolating each behind a thin
-internal interface (`storage`, `cache`, `queue`, `db`) keeps a platform change
-bounded. That isolation is worth doing precisely because the stack is not final.
+The stack is chosen ([ADR 0001](./adr/0001-tech-stack.md)), but the providers within
+it were chosen as "decided for now, may change." The adapter layer is what makes
+that statement true rather than aspirational.
+
+Hono is a standard Fetch-API framework, so routing and handlers port to Node, Bun,
+or Deno with little change. The genuinely Cloudflare-specific surfaces are R2, KV,
+Queues, Cron Triggers, and D1 — each sits behind a domain-owned interface
+(`storage`, `cache`, `queue`, `db`), as does Pingram (`notifications`). Swapping any
+one is a new adapter, not a rewrite.
 
 ---
 
@@ -730,6 +754,7 @@ Each phase should be independently demonstrable.
 
 | Phase | Contents |
 |---|---|
+| **0 — Spike** | Prove the three unverified integrations before anything depends on them: better-auth on Workers with a Drizzle D1 adapter; TanStack Start deploying to Workers with a Service Binding reachable from server functions; Pingram's real API (auth, webhooks, OTP, SMS coverage). A day here beats discovering a blocker after the foundation is built. |
 | **1 — Foundation** | Users, startups, sessions, roles/permissions, audit log, migrations, environments. |
 | **2 — Configuration** | Stage/field/document/transition definitions + admin CRUD + snapshot compiler and cache. Nothing applicant-facing yet — but this is the product's spine and must come first. |
 | **3 — Application runtime** | Applications, stage instances, dynamic form rendering, `outstanding()`, transitions, decision log. |
@@ -758,13 +783,18 @@ runtime first invariably produces hardcoded stages that Phase 2 then has to tear
 4. **Reviewer scoring** — is evaluation freeform notes, or structured scoring with
    multiple reviewers and aggregation? Structured scoring is a subsystem, not a field.
 5. **Pingram's capabilities** — confirm OTP support, SMS coverage for the applicant
-   regions, delivery webhooks, and pricing before committing (§8.3).
+   regions, delivery webhooks, and pricing (§8.3). Covered by the Phase 0 spike.
 6. **Malware scanning** — choose an approach (§7.3).
-7. **Data retention** — how long are rejected applicants' documents kept, and what
+7. **better-auth schema ownership** — does the domain read better-auth's `user` /
+   `session` / `account` tables directly, or map them behind a port? This conflicts
+   with §4.1's `users` table and needs settling before Phase 1 (§11).
+8. **API/client contract** — shared types package, generated client from an OpenAPI
+   spec, or manual sync? Two repositories have no compile-time link.
+9. **Data retention** — how long are rejected applicants' documents kept, and what
    obligations apply in the operating jurisdiction?
-8. **Localisation** — one language, or several? Templates and field labels are the
-   affected surfaces, and retrofitting translation into configuration rows is
-   painful.
+10. **Localisation** — one language, or several? Templates and field labels are the
+    affected surfaces, and retrofitting translation into configuration rows is
+    painful.
 
 ---
 

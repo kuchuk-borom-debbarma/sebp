@@ -17,6 +17,7 @@ before writing any code.
 |---|---|---|
 | **[Platform Overview](./platform-overview.md)** | Clients, stakeholders, non-technical readers | What sebp does, the applicant journey, the programme team's capabilities, the full feature list in plain language, and delivery phases. Safe to share externally. |
 | **[Technical Design](./technical-design.md)** | Engineering | Data model, stage engine, dynamic forms, document handling, notification pipeline, API surface, auth model, platform decisions, and build sequence. |
+| **[ADR 0001 — Tech stack](./adr/0001-tech-stack.md)** | Engineering | The stack decision, why each choice was made, what it costs, and which integrations are still unproven. |
 
 ---
 
@@ -25,10 +26,18 @@ before writing any code.
 **Domain** — a single-organisation startup programme. One programme team, one
 applicant pool, no multi-tenancy.
 
-**Stack** *(provisional)* — Hono on Cloudflare Workers · D1 for rows · R2 for
-documents · KV for config cache and sessions · Queues for notification fan-out ·
-Cron Triggers for reminders, SLA checks, and document expiry · Pingram for email
-and SMS.
+**Stack** — settled in [ADR 0001](./adr/0001-tech-stack.md).
+
+- **API** — Hono on Cloudflare Workers, own repo, API-only
+- **Frontend** — TanStack Start on Cloudflare Workers, own repo, SSR
+- **Frontend → API** — Service Binding, no network hop
+- **Data** — D1 behind ports/adapters · Drizzle · R2 for documents · KV for cache
+  and sessions
+- **Async** — Queues for notification fan-out · Cron Triggers for reminders, SLA
+  checks, document expiry
+- **Auth** — better-auth, running in the API
+- **Notifications** — Pingram for email and SMS, behind an adapter port
+- **Tooling** — Zod · Vitest with `@cloudflare/vitest-pool-workers` · Wrangler · pnpm
 
 **Subsystems**
 
@@ -51,6 +60,7 @@ Configuration comes before the applicant experience. This looks backwards — Ph
 ships nothing an applicant sees — but building the applicant flow first reliably
 produces hardcoded stages that then have to be torn out.
 
+0. **Spike** — prove better-auth on D1, TanStack Start + Service Bindings, Pingram's API
 1. **Foundation** — users, startups, sessions, roles, audit log
 2. **Configuration** — stage/field/document definitions, admin CRUD, snapshot cache
 3. **Application runtime** — dynamic forms, outstanding-items engine, transitions

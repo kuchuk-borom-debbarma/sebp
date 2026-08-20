@@ -1,5 +1,37 @@
 [
   {
+    "id": "fa96c397-a2a5-47c0-b0ef-c0c67e8aff98",
+    "workspace_id": "2b02b6a7-b4f0-4d93-873b-bbd684438678",
+    "collection_id": "9ba8b475-7717-487e-b47e-9aaa6ba9fda4",
+    "title": "Run tests before completing tasks",
+    "slug": "run-tests-before-completing-tasks",
+    "ref": "CONVE-3",
+    "content": "Run `pnpm test` (Vitest with `@cloudflare/vitest-pool-workers`) before marking any task done. If tests fail, fix them before completing the task — do not mark a task done with a red suite and a note to fix it later.\n\nBoth repositories use the same command. Run it in the repo you changed; if a change spans the API and the frontend, run both.\n\nUntil a repository actually has a test suite, the requirement is to manually verify the change works end to end and say in the task comment what you verified. \"It compiles\" is not verification.\n",
+    "fields": "{\"priority\":\"must\",\"scope\":\"all\",\"status\":\"active\",\"trigger\":\"on-task-complete\"}",
+    "tags": "[]",
+    "pinned": false,
+    "sort_order": 0,
+    "created_by": "system",
+    "last_modified_by": "agent",
+    "source": "template",
+    "created_at": "2026-08-20T06:37:14Z",
+    "updated_at": "2026-08-20T08:21:36Z",
+    "role_sort_order": 0,
+    "item_number": 3,
+    "seq": 10,
+    "collection_slug": "conventions",
+    "collection_name": "Conventions",
+    "collection_icon": "📏",
+    "collection_prefix": "CONVE",
+    "convention": {
+      "trigger": "on-task-complete",
+      "surfaces": [
+        "all"
+      ],
+      "enforcement": "must"
+    }
+  },
+  {
     "id": "99324722-c582-4b43-a72d-dc16da2180da",
     "workspace_id": "2b02b6a7-b4f0-4d93-873b-bbd684438678",
     "collection_id": "9ba8b475-7717-487e-b47e-9aaa6ba9fda4",
@@ -57,38 +89,6 @@
     "collection_prefix": "CONVE",
     "convention": {
       "trigger": "on-commit",
-      "surfaces": [
-        "all"
-      ],
-      "enforcement": "must"
-    }
-  },
-  {
-    "id": "fa96c397-a2a5-47c0-b0ef-c0c67e8aff98",
-    "workspace_id": "2b02b6a7-b4f0-4d93-873b-bbd684438678",
-    "collection_id": "9ba8b475-7717-487e-b47e-9aaa6ba9fda4",
-    "title": "Run tests before completing tasks",
-    "slug": "run-tests-before-completing-tasks",
-    "ref": "CONVE-3",
-    "content": "Run the project's test suite before marking any task as done. If tests fail, fix them before completing the task.",
-    "fields": "{\"priority\":\"must\",\"scope\":\"all\",\"status\":\"active\",\"trigger\":\"on-task-complete\"}",
-    "tags": "[]",
-    "pinned": false,
-    "sort_order": 0,
-    "created_by": "system",
-    "last_modified_by": "system",
-    "source": "template",
-    "created_at": "2026-08-20T06:37:14Z",
-    "updated_at": "2026-08-20T06:37:14Z",
-    "role_sort_order": 0,
-    "item_number": 3,
-    "seq": 3,
-    "collection_slug": "conventions",
-    "collection_name": "Conventions",
-    "collection_icon": "📏",
-    "collection_prefix": "CONVE",
-    "convention": {
-      "trigger": "on-task-complete",
       "surfaces": [
         "all"
       ],
