@@ -812,23 +812,61 @@ double-advance an applicant.
 
 ## 12. Authentication and authorisation
 
-**Authentication** — **better-auth**, running in the API rather than the frontend:
-auth split across two servers means two places that can disagree about who a user
-is. It covers email + password, email verification, phone OTP, and session
-management. Sessions stay server-side rather than JWT — staff need immediate
-revocation. Turnstile on signup.
+**better-auth**, running in the API rather than the frontend: auth split across two
+servers means two places that can disagree about who a user is. Sessions stay
+server-side rather than JWT — staff need immediate revocation.
+
+### 12.1 Sign-up — OTP-verified, password-backed
+
+```
+  email  ──▶  OTP delivered  ──▶  user submits OTP + chosen password  ──▶  account
+```
+
+Entering a valid OTP proves the address, so there is **no separate email
+verification step** — the two collapse into one. The account does not exist until
+both the OTP and the password are accepted; a half-finished signup leaves nothing
+behind.
+
+**Channels.** Email at launch. Phone is a second channel later, using the same
+mechanism — so OTP delivery is written channel-agnostically from the start against
+the `Notifier` port (§8.3), never against "email" specifically.
+
+**OTP rules.** Six digits, short expiry, single use, invalidated on success. Rate
+limit per address *and* per IP: OTP endpoints are free SMS/email for an attacker
+otherwise. Attempt limits with lockout, and constant-time comparison. Never log the
+code. Turnstile on the request-OTP endpoint.
+
+### 12.2 Sign-in and reset
+
+Sign-in is **email + password**. OTP is a signup and recovery mechanism, not a login
+one, so a mail outage does not lock out existing users.
+
+Password reset is OTP-verified by the same flow.
+
+⚠️ **bcrypt is unavailable in Workers.** Because this flow has passwords, hashing is
+a live constraint, not a footnote: better-auth must use something Workers-compatible
+— WebCrypto PBKDF2, or a WASM argon2/scrypt build. **Verifying which, and whether
+its parameters are adequate, is a blocking question for TASK-39.**
+
+### 12.3 Staff
+
+Programme staff sign in through exactly the same flow. Elevated access comes from
+roles, not from a separate login system — one auth path to build, test, and secure.
+
+### 12.4 Sessions and schema
 
 The SSR frontend forwards the session cookie on its server-side fetches. Both apps
 deploy under one parent domain (`app.sebp.com`, `api.sebp.com`, cookie scoped to
 `.sebp.com`) or SameSite rules break the session.
 
-⚠️ **better-auth owns its own schema.** Its `user` / `session` / `account` tables are
-library-shaped, and the `users` table sketched in §4.1 will not survive contact with
-it unchanged. Decide early whether the domain reads those tables directly or maps
-them behind a port. Note also that bcrypt is unavailable in Workers — any hashing
-outside better-auth must use WebCrypto PBKDF2 or a WASM argon2 build.
+⚠️ **better-auth owns its own schema.** Its `user` / `session` / `account` /
+`verification` tables are library-shaped, and the `users` table sketched in §4.1 does
+not survive contact with them. `modules/identity` owns the reconciliation; everything
+downstream sees a branded `UserId` (§7 of codebase-structure.md).
 
-**Authorisation** — role-based, roles as data:
+### 12.5 Authorisation
+
+Role-based, roles as data:
 
 ```
 roles (id, key, name)
