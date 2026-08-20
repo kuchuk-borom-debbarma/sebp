@@ -1,0 +1,23 @@
+# Declares backend/ as its OWN pnpm workspace root.
+#
+# WHY THIS EXISTS: without it, pnpm walks up the directory tree looking for a
+# root and finds a package.json in the user's HOME directory, absorbing this
+# project into an unrelated one. Symptoms: node_modules resolving to
+# ~/node_modules, and `pnpm run <script>` failing while trying to git-clone a
+# private dependency belonging to a completely different project.
+#
+# An empty `packages` list is deliberate — backend/ is a single project, not a
+# monorepo. The file's job is to stop the upward search.
+packages: []
+
+allowBuilds:
+  esbuild: true
+  workerd: true
+
+# workerd IS the Workers runtime and esbuild is the bundler. Both ship prebuilt
+# platform binaries fetched by a postinstall script, so their builds must be
+# allowed to run or the runtime never starts. Approving them explicitly here
+# keeps `pnpm install` non-interactive in CI.
+onlyBuiltDependencies:
+  - workerd
+  - esbuild

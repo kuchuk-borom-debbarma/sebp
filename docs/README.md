@@ -18,6 +18,9 @@ before writing any code.
 | **[Platform Overview](./platform-overview.md)** | Clients, stakeholders, non-technical readers | What sebp does, the applicant journey, the programme team's capabilities, the full feature list in plain language, and delivery phases. Safe to share externally. |
 | **[Technical Design](./technical-design.md)** | Engineering | Data model, stage engine, dynamic forms, document handling, notification pipeline, API surface, auth model, platform decisions, and build sequence. |
 | **[Codebase Structure](./codebase-structure.md)** | Engineering | **Read before writing any code.** Repository layout, module anatomy, dependency rules, ports, error model, testing rules, and enforcement. |
+| **[Authentication](./authentication.md)** | Engineering | How sign-up and sign-in work, the better-auth boundary, every security property and why it exists, local development, and what changes when Pingram lands. |
+| **[Modules](./modules.md)** | Engineering | Each module's responsibility, public surface, and the ports it owns and consumes. |
+| **[Platform adapters](./platform.md)** | Engineering | Each adapter, what it wraps, its quirks, and what replacing it would involve. |
 | **[ADR 0001 — Tech stack](./adr/0001-tech-stack.md)** | Engineering | The stack decision, why each choice was made, what it costs, and which integrations are still unproven. |
 | **[ADR 0002 — Codebase structure](./adr/0002-codebase-structure.md)** | Engineering | Why module-first hexagonal, strict layering, HTTP-only testing at 100%, and what each costs. |
 

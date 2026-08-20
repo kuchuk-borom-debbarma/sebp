@@ -1,0 +1,43 @@
+name = "sebp-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# REQUIRED. better-auth hashes passwords with scrypt from `node:crypto`
+# (@better-auth/utils declares a `workerd` export condition pointing at the
+# native implementation). Without this flag the module does not resolve and
+# the build fails. Verified in TASK-39.
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# ── Local / default ──────────────────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "sebp"
+database_id = "local-development"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "CACHE"          # rate-limit counters today; config snapshots later
+id = "local-development"
+
+[env.staging]
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "sebp-staging"
+database_id = "REPLACE_WITH_STAGING_D1_ID"
+migrations_dir = "migrations"
+[[env.staging.kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_STAGING_KV_ID"
+
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "sebp-production"
+database_id = "REPLACE_WITH_PRODUCTION_D1_ID"
+migrations_dir = "migrations"
+[[env.production.kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_PRODUCTION_KV_ID"

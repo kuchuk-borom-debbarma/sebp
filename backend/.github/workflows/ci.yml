@@ -1,0 +1,35 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # All four gates. Each fails the build on its own — none is advisory.
+      #
+      # `typecheck` is pinned to TypeScript 6: typescript-eslint hard-refuses
+      # TS 7 and dependency-cruiser requires <7.0.0, so bumping it silently
+      # takes out two of the four gates. See TASK-35.
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm depcruise
+      - run: pnpm test:coverage
