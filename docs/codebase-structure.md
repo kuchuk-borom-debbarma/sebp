@@ -514,7 +514,7 @@ Cross-cutting HTTP conventions:
   a new one.
 - Never edit an applied migration. Ever.
 - Configuration tables are **append-only** — archive with `archived_at`, never
-  `DELETE`. See [technical-design.md §5.5](./technical-design.md#55-configuration-versioning--the-hard-problem)
+  `DELETE`. See [technical-design.md §5.5](./technical-design.md#55-configuration-changes-mid-flight)
   for why this is load-bearing rather than fastidious.
 
 ---

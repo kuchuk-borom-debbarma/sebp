@@ -1,5 +1,37 @@
 [
   {
+    "id": "f374f63b-7a2b-4bd4-8978-7c0963686207",
+    "workspace_id": "2b02b6a7-b4f0-4d93-873b-bbd684438678",
+    "collection_id": "9ba8b475-7717-487e-b47e-9aaa6ba9fda4",
+    "title": "Nothing is hardcoded — stages, fields and documents are data",
+    "slug": "nothing-is-hardcoded-stages-fields-and-documents-are-data",
+    "ref": "CONVE-11",
+    "content": "Stages, per-stage fields, and document requirements are rows in the database, edited by admins at runtime. They are never constants in source code.\n\nIf you find yourself writing any of these, stop — it belongs in configuration:\n\n    const STAGES = ['applied', 'screening', 'interview']   // forbidden\n    if (stage.key === 'interview') { ... }                 // forbidden\n    requiredDocs = ['pitch_deck', 'incorporation_cert']    // forbidden\n\nThis is not a style preference. Runtime-configurable stages, fields, and documents are the product — a hardcoded stage list silently destroys the reason sebp exists, and it will not be caught by tests, because the tests will have been written against the same hardcoded list.\n\nThis extends to:\n- Configuration is scoped to a round. Never query stage/field/document definitions without a round_id.\n- Admin-editable labels are locale-keyed JSON, never plain strings. Resolve with fallback to \"en\".\n- The identifier fields used by the duplicate-approval gate are declared per document requirement, not hardcoded per document type.\n\nThe only sanctioned switch on a field's data type is the validator factory in the API and the renderer map in the frontend. Everywhere else, behaviour is driven by configuration rows.\n\nSee docs/technical-design.md §1.1, §4.2, §5 and §10.\n",
+    "fields": "{\"priority\":\"must\",\"scope\":\"backend\",\"status\":\"active\",\"trigger\":\"on-implement\"}",
+    "tags": "[]",
+    "pinned": false,
+    "sort_order": 0,
+    "created_by": "agent",
+    "last_modified_by": "agent",
+    "source": "cli",
+    "created_at": "2026-08-20T09:17:06Z",
+    "updated_at": "2026-08-20T09:38:24Z",
+    "role_sort_order": 0,
+    "item_number": 11,
+    "seq": 25,
+    "collection_slug": "conventions",
+    "collection_name": "Conventions",
+    "collection_icon": "📏",
+    "collection_prefix": "CONVE",
+    "convention": {
+      "trigger": "on-implement",
+      "surfaces": [
+        "backend"
+      ],
+      "enforcement": "must"
+    }
+  },
+  {
     "id": "2382f2f7-d885-43f4-aef7-e1939a6cb504",
     "workspace_id": "2b02b6a7-b4f0-4d93-873b-bbd684438678",
     "collection_id": "9ba8b475-7717-487e-b47e-9aaa6ba9fda4",
@@ -187,38 +219,6 @@
       "trigger": "on-implement",
       "surfaces": [
         "all"
-      ],
-      "enforcement": "must"
-    }
-  },
-  {
-    "id": "f374f63b-7a2b-4bd4-8978-7c0963686207",
-    "workspace_id": "2b02b6a7-b4f0-4d93-873b-bbd684438678",
-    "collection_id": "9ba8b475-7717-487e-b47e-9aaa6ba9fda4",
-    "title": "Nothing is hardcoded — stages, fields and documents are data",
-    "slug": "nothing-is-hardcoded-stages-fields-and-documents-are-data",
-    "ref": "CONVE-11",
-    "content": "Stages, per-stage fields, and document requirements are rows in the database, edited by admins at runtime. They are never constants in source code.\n\nIf you find yourself writing any of these, stop — it belongs in configuration:\n\n    const STAGES = ['applied', 'screening', 'interview']   // forbidden\n    if (stage.key === 'interview') { ... }                 // forbidden\n    requiredDocs = ['pitch_deck', 'incorporation_cert']    // forbidden\n\nThis is not a style preference. Runtime-configurable stages, fields, and documents are the product — a hardcoded stage list silently destroys the reason sebp exists, and it will not be caught by tests, because the tests will have been written against the same hardcoded list.\n\nThe only sanctioned switch on a field's data type is the validator factory in the API and the renderer map in the frontend. Everywhere else, behaviour is driven by configuration rows.\n\nSee docs/technical-design.md §1.1 and §5.\n",
-    "fields": "{\"priority\":\"must\",\"scope\":\"backend\",\"status\":\"active\",\"trigger\":\"on-implement\"}",
-    "tags": "[]",
-    "pinned": false,
-    "sort_order": 0,
-    "created_by": "agent",
-    "last_modified_by": "agent",
-    "source": "cli",
-    "created_at": "2026-08-20T09:17:06Z",
-    "updated_at": "2026-08-20T09:17:06Z",
-    "role_sort_order": 0,
-    "item_number": 11,
-    "seq": 13,
-    "collection_slug": "conventions",
-    "collection_name": "Conventions",
-    "collection_icon": "📏",
-    "collection_prefix": "CONVE",
-    "convention": {
-      "trigger": "on-implement",
-      "surfaces": [
-        "backend"
       ],
       "enforcement": "must"
     }

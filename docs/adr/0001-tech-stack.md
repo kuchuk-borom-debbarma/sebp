@@ -1,7 +1,7 @@
 # ADR 0001 — Technology stack
 
 **Status:** Accepted · **Date:** 2026-08-20 · **Supersedes:** the provisional stack
-notes in [technical-design.md §12](../technical-design.md#12-platform-decisions)
+notes in [technical-design.md §13](../technical-design.md#13-platform-decisions)
 
 ---
 

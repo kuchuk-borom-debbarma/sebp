@@ -40,7 +40,7 @@ source code, stop. It belongs in configuration.
 **Single organisation.** One programme team, one set of stage configurations, one
 applicant pool. There is no tenant scoping on tables and no per-tenant branding.
 
-We deliberately do not build for multi-tenancy, but §14.2 records the seams where
+We deliberately do not build for multi-tenancy, but §15.2 records the seams where
 it would be introduced if that changes.
 
 ---
@@ -49,14 +49,14 @@ it would be introduced if that changes.
 
 | Actor | Description |
 |---|---|
-| **Applicant (founder)** | A person who signs up. Belongs to exactly one startup. |
-| **Startup** | The applying entity. May have several founders as members. Owns one application. |
+| **Applicant (founder)** | A person who signs up and applies. One founder, one startup. |
+| **Startup** | The applying entity, owned by exactly one founder. One application per round. |
 | **Reviewer** | Programme staff who evaluate applications and approve documents. |
 | **Admin** | Programme staff who configure stages, fields, documents, templates, events. |
 | **Support agent** | Handles support tickets. Often the same humans as reviewers. |
 | **System** | Scheduled jobs — SLA checks, reminders, document expiry, scheduled publishes. |
 
-Roles are data (§11), not enum constants. "Reviewer" and "Admin" are seeded rows,
+Roles are data (§12), not enum constants. "Reviewer" and "Admin" are seeded rows,
 and permissions are granted per role.
 
 ---
@@ -69,7 +69,7 @@ a **Service Binding** — a direct Worker-to-Worker call with no network hop, so
 API needs no public exposure to serve SSR traffic.
 
 Settled in [ADR 0001](./adr/0001-tech-stack.md). Providers remain replaceable behind
-ports — see §12.6.
+ports — see §13.6.
 
 ```
    Browser ──▶ ┌─────────────────────────┐   Service   ┌──────────────────┐
@@ -126,37 +126,73 @@ users
   last_login_at, created_at, updated_at
 
 startups
-  id, name, slug UNIQUE, website,
+  id, owner_user_id UNIQUE,      -- exactly one founder per startup
+  name, slug UNIQUE, website,
   status (draft | active | withdrawn),
   created_at, updated_at
   -- all other startup profile data lives in field_values (§4.3)
-
-startup_members
-  id, startup_id, user_id,
-  role (owner | member),
-  invited_by, invited_at, accepted_at
-  UNIQUE (startup_id, user_id)
-
-sessions
-  id, user_id, expires_at, ip, user_agent, created_at
 ```
+
+**One founder, one startup, one application per round.** There is no team
+membership, no invite flow, and no intra-startup roles. Every ownership check
+reduces to comparing `startups.owner_user_id` against the caller.
+
+`users` and `sessions` above are **owned by better-auth**, not by us — the shapes
+shown are indicative. See §12 for the boundary.
 
 Note that `startups` has almost no columns. Everything a programme wants to know
 about a startup — sector, stage of company, revenue, team size — is admin-configured
 and therefore lives in `field_values`. Only fields the *system itself* needs to
 function (name, slug) are real columns.
 
-### 4.2 Stage configuration
+### 4.2 Rounds
+
+A **round** is one intake of the programme. It is the scoping dimension for
+applications, stage configuration, events, and announcements.
+
+```
+rounds
+  id, key UNIQUE, name, description,
+  applications_open_at  NULL,    -- NULL = always open
+  applications_close_at NULL,    -- NULL = never closes
+  starts_at NULL, ends_at NULL,  -- the programme period itself
+  status (draft | open | closed | running | completed | archived),
+  cloned_from_round_id NULL,
+  created_at, updated_at
+```
+
+**One model, both modes.** A batched programme creates several rounds with real
+open/close dates — *Spring 2027*, *Autumn 2027* — each selecting a group that goes
+through the programme together. A continuous programme runs a single perpetual
+round with `applications_close_at = NULL` that never completes. Both can coexist:
+an always-open intake track and a batched accelerator are simply two rounds.
+
+Nothing needs to know which mode is in use. The scoping is unconditional; only the
+dates differ.
+
+**Configuration belongs to a round.** Stage definitions, field definitions, and
+document requirements are all scoped by `round_id`, and a round's configuration
+freezes when it opens. This is what removes the version-pinning machinery that
+would otherwise be required — see §5.5.
+
+**Cloning is required, not optional.** Creating *Autumn 2027* must be able to copy
+*Spring 2027*'s entire configuration (`cloned_from_round_id` records the lineage).
+Without it, admins rebuild fifteen stages by hand every intake, and they will
+instead keep reusing one round and defeat the design.
+
+### 4.3 Stage configuration
 
 ```
 stage_definitions
-  id, key UNIQUE, name, description,
+  id, round_id,
+  key, name JSON, description JSON,   -- name/description locale-keyed
   order_index,
   kind (form | review | action_required | terminal),
   applicant_visible BOOL,        -- can applicants see this stage exists?
   sla_days INT NULL,             -- expected time to decide
   is_entry BOOL,                 -- the stage new applications start in
   archived_at NULL
+  UNIQUE (round_id, key) WHERE archived_at IS NULL
 
 stage_transitions_config
   id, from_stage_id, to_stage_id,
@@ -174,13 +210,15 @@ A transition is only legal if a `stage_transitions_config` row exists for the
 linear list — which is what makes rejection, withdrawal, and send-back-for-changes
 work without special cases.
 
-### 4.3 Dynamic fields
+### 4.4 Dynamic fields
 
 ```
 field_definitions
-  id,
+  id, round_id,
   stage_id NULL,                  -- NULL = startup profile field, not stage-bound
-  key, label, help_text,
+  key,
+  label JSON,                     -- locale-keyed: {"en": "...", "fr": "..."}
+  help_text JSON,                 -- locale-keyed
   data_type (text | longtext | number | date | select | multiselect
              | boolean | url | email | phone | money | file),
   options JSON NULL,              -- for select / multiselect
@@ -203,19 +241,21 @@ field_values
 (`value_text`, `value_number`, …) — buys typed indexes at the cost of a wider
 table and branching on every read and write. We store a single JSON value and add
 generated columns with indexes for the specific fields admins actually filter and
-sort on (§12.3). Start simple; add indexes when a real query is slow.
+sort on (§13.3). Start simple; add indexes when a real query is slow.
 
-### 4.4 Document requirements
+### 4.5 Document requirements
 
 ```
 document_requirements
-  id,
+  id, round_id,
   stage_id NULL,                  -- NULL = required regardless of stage
-  key, name, description,
+  key,
+  name JSON, description JSON,    -- locale-keyed
   required BOOL,
   accepted_mime_types JSON,       -- ["application/pdf", "image/png"]
   max_size_bytes, max_files,
   expires_after_days INT NULL,    -- e.g. certificate valid 12 months
+  identity_fields JSON,           -- see §7.5 — [{key,label,unique_scope}]
   order_index,
   archived_at NULL
 
@@ -233,20 +273,21 @@ Re-uploads create a **new version row** rather than replacing the old one. A
 rejected document and the corrected replacement are both part of the record — that
 history is exactly what an admin needs when a decision is questioned later.
 
-### 4.5 Application runtime
+### 4.6 Application runtime
 
 ```
 applications
-  id, startup_id UNIQUE,
+  id, startup_id, round_id,
   current_stage_id,
   status (draft | active | withdrawn | rejected | accepted | completed),
-  config_version INT,             -- see §5.5
   submitted_at, created_at, updated_at
+  UNIQUE (startup_id, round_id)   -- one application per startup per round
 
 application_stage_instances
   id, application_id, stage_id,
   status (pending | in_progress | submitted | under_review
           | changes_requested | approved | rejected | skipped),
+  -- reviewers act with: approve | reject | request_redo (§7.5)
   entered_at, submitted_at,
   decided_at, decided_by, decision_note,
   sla_due_at
@@ -265,13 +306,14 @@ stage_transition_log
 *instance* says "this startup entered Interview on 3 March, is under review, and is
 two days past SLA."
 
-### 4.6 Notifications
+### 4.7 Notifications
 
 ```
 notification_templates
   id, key UNIQUE, name,
-  subject_template, body_template,   -- variable interpolation, §8.2
-  sms_template NULL,
+  subject_template JSON,             -- locale-keyed, §8.2
+  body_template JSON,                -- locale-keyed
+  sms_template JSON NULL,            -- locale-keyed
   archived_at NULL
 
 notification_triggers
@@ -298,11 +340,12 @@ Which events send which notifications on which channels to whom is **configurati
 consistent with §1.1. Adding "text the applicant when their document is rejected"
 is a row, not a deploy.
 
-### 4.7 Events, announcements, support
+### 4.8 Events, announcements, support
 
 ```
 events
-  id, title, description,
+  id, round_id NULL,                 -- NULL = programme-wide, not round-specific
+  title, description,
   starts_at, ends_at, timezone,
   location_type (online | in_person | hybrid), location, meeting_url,
   capacity INT NULL, registration_required BOOL,
@@ -318,7 +361,8 @@ event_registrations
   UNIQUE (event_id, user_id)
 
 announcements
-  id, title, body,
+  id, round_id NULL,                 -- NULL = programme-wide
+  title, body,
   audience JSON,                     -- same shape as event visibility
   pinned BOOL,
   publish_at, expires_at NULL,
@@ -346,7 +390,7 @@ support_messages
 deliberately share one JSON audience shape. Write the resolver once
 (`resolveAudience(spec) → user_id[]`) and reuse it in all three.
 
-### 4.8 Audit
+### 4.9 Audit
 
 ```
 audit_log
@@ -359,6 +403,11 @@ audit_log
 Every configuration change and every application decision is written here. In a
 programme where people are accepted and rejected, "who changed the required
 documents, and when" is a question that *will* be asked.
+
+⚠️ **No personal data in `audit_log`.** Reference `user_id`, never names, emails, or
+document contents. The log is append-only while data-protection obligations may
+require erasing a person's details; keeping PII out is what lets both hold at once —
+the user record can be scrubbed while the trail survives intact.
 
 ---
 
@@ -426,29 +475,38 @@ number. Any admin write bumps the version and writes a new snapshot. Workers rea
 lifetime) and fetch the snapshot. Because snapshots are immutable and versioned,
 cache invalidation reduces to reading one integer.
 
-### 5.5 Configuration versioning — the hard problem
+### 5.5 Configuration changes mid-flight
 
-An admin edits stage configuration while forty applications are mid-flight. What
+An admin edits stage configuration while forty applications are in progress. What
 happens to them?
 
-**Rules:**
+**Rounds answer most of this.** Configuration is scoped to a round (§4.2), and a
+round's configuration **freezes when the round opens**. Applications belong to a
+round, so they are evaluated against a configuration that cannot shift underneath
+them. Next intake's changes go into the next round, cloned from this one and edited
+freely while still in `draft`.
+
+That leaves a narrow case: an admin genuinely needs to change an **open** round —
+a required document turns out to be unobtainable, or a question was worded wrongly.
+
+**Rules for editing an open round:**
 
 1. **Configuration rows are never hard-deleted**, only `archived_at`. An archived
    field still renders its historical value on applications that captured it.
-2. **Applications pin `config_version`** at creation. Their checklist is evaluated
-   against the snapshot they were admitted under.
-3. **Admins may explicitly migrate** an application (or a filtered set) to the
-   current version, which is an audited action showing what becomes newly
-   outstanding.
-4. **Adding an optional field or a non-required document** is safe and applies
-   immediately to everyone.
-5. **Adding a required item, removing a stage, or reordering stages** is a
-   version-bumping change requiring explicit migration.
+2. **Widening changes apply immediately.** Adding an optional field, adding a
+   non-required document, relaxing a requirement, fixing a label or translation.
+   These cannot invalidate completed work.
+3. **Narrowing changes require explicit confirmation.** Adding a required item,
+   removing a stage, or reordering stages. The admin is shown exactly how many
+   in-flight applications become newly incomplete, and the change is audited.
+4. **A closed or running round's configuration is immutable** except for labels and
+   translations.
 
-Getting this wrong produces the worst possible bug class: an applicant who
-completed everything is silently marked incomplete, or worse, is advanced past a
-document that is now mandatory. Build this in from the start — retrofitting version
-pinning after launch means reconciling live data by hand.
+Getting this wrong produces the worst bug class this system can have: an applicant
+who completed everything is silently marked incomplete, or is advanced past a
+document that has since become mandatory. Round-scoped configuration removes most
+of that risk structurally rather than procedurally — which is why the round
+dimension is worth its cost.
 
 ### 5.6 Concurrency
 
@@ -529,11 +587,92 @@ itself must be chosen: a third-party API called from a queue consumer, or a
 container running ClamAV outside Workers. Do not skip this — the platform invites
 strangers to upload files that staff will open.
 
-### 7.4 Expiry
+### 7.4 Review decisions
+
+A reviewer acting on a stage or a document has exactly three outcomes:
+
+| Outcome | Meaning |
+|---|---|
+| **Approve** | Accepted. Subject to the duplicate gate below. |
+| **Reject** | Not accepted. Reason required. |
+| **Request redo** | Returned to the applicant for correction. Reason required, and it names what must change. |
+
+Reason text is mandatory on reject and request-redo, and surfaced verbatim to the
+applicant — a rejection an applicant cannot act on generates a support ticket.
+
+### 7.5 Document identity and the duplicate gate
+
+**The problem.** One real company creates two applications — a second account, a
+slightly different name, a fresh email — and both get approved by different
+reviewers who never see each other's work. Nothing in the flow described so far
+catches it.
+
+**The mechanism.** Approval is a guarded action. Document requirements declare
+which identifiers their document carries, and the reviewer records those
+identifiers at the moment of approval. The system then checks them against every
+already-approved record and refuses the approval on a match.
+
+Identifier definitions are configuration, consistent with §1.1:
+
+```
+-- document_requirements.identity_fields, e.g.
+[ { "key": "company_reg_no", "label": {"en": "Registration number"},
+    "unique_scope": "global" },
+  { "key": "tax_id",         "label": {"en": "Tax ID"},
+    "unique_scope": "round"  } ]
+```
+
+```
+document_identities
+  id, document_submission_id, application_id,
+  requirement_id, field_key,
+  value_normalised,               -- trimmed, uppercased, punctuation stripped
+  value_raw,
+  round_id,
+  recorded_by, recorded_at
+  UNIQUE (field_key, value_normalised) WHERE unique_scope = 'global'
+  UNIQUE (field_key, value_normalised, round_id) WHERE unique_scope = 'round'
+```
+
+**Normalise before comparing.** `U-1234/AB`, `u1234ab`, and `U 1234 AB` are the
+same registration number to a human and three different strings to a database. The
+normalised value is what carries the constraint; the raw value is kept for display.
+
+**On a match, approval is blocked and the reviewer is shown the conflicting
+record** — which application, which round, its current status.
+
+**Override is possible but expensive.** A privileged admin may force the approval
+with a written justification. The override is written to `audit_log` with both
+application references and appears on the report of forced approvals. Legitimate
+collisions exist — a genuine re-application after rejection, a shared registration
+number across group companies — so a hard block with no escape hatch would push
+staff into manual database edits, which is strictly worse.
+
+**Uniqueness scope is per identifier.** A company registration number is probably
+unique programme-wide (`global`). A founder's ID document might reasonably recur
+across rounds if re-applying is allowed (`round`).
+
+### 7.6 Expiry
 
 Requirements with `expires_after_days` set `document_submissions.expires_at` on
 approval. A daily cron flips lapsed rows to `expired` and fires
 `document.expired`, which reopens the requirement in the applicant's checklist.
+
+---
+
+### 7.7 Retention and archival
+
+Documents and application records stay live for **one year** after a terminal
+decision, then move to cold storage — R2 Infrequent Access — where they remain
+retrievable, just slower and cheaper. Database rows are not deleted; only the object
+storage class changes.
+
+A monthly cron identifies eligible records and transitions them. Retrieval from
+cold storage is transparent to the reviewer, so no separate flow is needed.
+
+Retention interacts with §4.9's rule that `audit_log` holds no personal data: the
+audit trail survives archival and any future erasure request untouched, because it
+never contained anything that needs erasing.
 
 ---
 
@@ -606,7 +745,38 @@ responsiveness reporting. Inbound email-to-ticket is explicitly out of scope for
 
 ---
 
-## 10. API design
+## 10. Localisation
+
+Multi-language support is required from day one; **English is the default and the
+only language at launch**, with others added later without schema change.
+
+**Configuration carries its own translations.** Every admin-editable label —
+`stage_definitions.name`, `field_definitions.label` and `help_text`,
+`document_requirements.name` and `description`, notification templates — is stored
+as a locale-keyed JSON object rather than a string:
+
+```json
+{ "en": "Registration number", "fr": "Numéro d'immatriculation" }
+```
+
+Resolution falls back to `en` for any missing locale, so adding a language never
+breaks a screen — it degrades to English until translated.
+
+**UI strings** in `sebp-web` use a conventional i18n catalogue; they are code, not
+configuration.
+
+**Locale is resolved per request** from the user's profile preference, falling back
+to `Accept-Language`, falling back to `en`. Notifications render in the recipient's
+preferred locale, not the sender's.
+
+This is cheap now and expensive later: retrofitting translation into configuration
+rows means migrating every definition and every template, plus a locale-aware admin
+editor. Storing the JSON shape from the first migration costs almost nothing even
+while only `en` is populated.
+
+---
+
+## 11. API design
 
 REST, versioned at `/api/v1`, Hono routers per resource, Zod at every boundary.
 
@@ -640,7 +810,7 @@ double-advance an applicant.
 
 ---
 
-## 11. Authentication and authorisation
+## 12. Authentication and authorisation
 
 **Authentication** — **better-auth**, running in the API rather than the frontend:
 auth split across two servers means two places that can disagree about who a user
@@ -674,16 +844,16 @@ be a shared helper, not repeated per handler — that is where these systems lea
 
 ---
 
-## 12. Platform decisions
+## 13. Platform decisions
 
-### 12.1 D1 vs Postgres
+### 13.1 D1 vs Postgres
 
 **Decided: D1, behind ports and adapters** ([ADR 0001](./adr/0001-tech-stack.md)).
 
 D1 is SQLite: it is co-located with Workers, requires no connection pooling, has no
 idle cost, and comfortably handles a programme's volume (thousands of applications,
 not millions). SQLite's JSON1 functions plus generated columns cover the dynamic-field
-queries described in §12.3.
+queries described in §13.3.
 
 Constraints to respect: a 10 GB database limit (documents live in R2, so rows stay
 small), no long-lived transactions, and modest write concurrency — all acceptable
@@ -695,7 +865,7 @@ persistence sits behind domain-owned interfaces with D1 as one adapter, so that 
 adds an adapter rather than rewriting every handler. Drizzle reinforces this — the
 same query syntax targets both.
 
-### 12.2 Frontend
+### 13.2 Frontend
 
 **TanStack Start on Cloudflare Workers, in a separate repository.** Server-rendered
 throughout, which covers SEO on the public programme and event pages; the
@@ -706,7 +876,7 @@ Two repositories mean no compile-time link between API and client. A shared type
 package or generated client should land early — otherwise an API change breaks the
 frontend silently.
 
-### 12.3 Indexing dynamic fields
+### 13.3 Indexing dynamic fields
 
 When admins need to filter or sort by a specific configured field, add a generated
 column and index it:
@@ -720,13 +890,13 @@ CREATE INDEX idx_field_values_lookup
 
 Do this in response to a measured slow query, not preemptively for every field.
 
-### 12.4 Environments
+### 13.4 Environments
 
 Three Workers environments (`dev`, `staging`, `production`) with separate D1, R2,
 KV, and Queues bindings. Secrets via Wrangler. Migrations version-controlled and
 applied in CI. Staging must carry the notification kill-switch from §8.4.
 
-### 12.5 Observability
+### 13.5 Observability
 
 Structured JSON logs with a request ID propagated through queue messages. Workers
 Analytics Engine for counters that matter to operations: transitions per stage,
@@ -734,7 +904,7 @@ notification failure rate, upload failure rate, SLA breaches. Alert on notificat
 delivery failure rate — silent notification failure is this system's quietest and
 most damaging outage.
 
-### 12.6 Keeping providers replaceable
+### 13.6 Keeping providers replaceable
 
 The stack is chosen ([ADR 0001](./adr/0001-tech-stack.md)), but the providers within
 it were chosen as "decided for now, may change." The adapter layer is what makes
@@ -748,7 +918,7 @@ one is a new adapter, not a rewrite.
 
 ---
 
-## 13. Build sequence
+## 14. Build sequence
 
 Each phase should be independently demonstrable.
 
@@ -768,37 +938,41 @@ runtime first invariably produces hardcoded stages that Phase 2 then has to tear
 
 ---
 
-## 14. Open questions
+## 15. Open questions
 
-1. **Multi-founder startups** — the model assumes several founders may share one
-   application. Confirm; if applications are strictly one-person, `startup_members`
-   collapses and the model simplifies considerably.
-2. **Cohorts** — do programmes run in rounds (Spring 2027, Autumn 2027) with
-   separate configurations and separate applicant pools? If so, a `cohorts` table
-   should be introduced now, not retrofitted, since it scopes applications,
-   stages, and events.
-3. **Post-acceptance lifecycle** — does an accepted startup keep using the platform
-   during the programme, or is acceptance the terminal state? This determines
-   whether stages continue past acceptance and how much weight events carry.
-4. **Reviewer scoring** — is evaluation freeform notes, or structured scoring with
-   multiple reviewers and aggregation? Structured scoring is a subsystem, not a field.
-5. **Pingram's capabilities** — confirm OTP support, SMS coverage for the applicant
-   regions, delivery webhooks, and pricing (§8.3). Covered by the Phase 0 spike.
-6. **Malware scanning** — choose an approach (§7.3).
-7. **better-auth schema ownership** — does the domain read better-auth's `user` /
-   `session` / `account` tables directly, or map them behind a port? This conflicts
-   with §4.1's `users` table and needs settling before Phase 1 (§11).
-8. **API/client contract** — shared types package, generated client from an OpenAPI
-   spec, or manual sync? Two repositories have no compile-time link.
-9. **Data retention** — how long are rejected applicants' documents kept, and what
-   obligations apply in the operating jurisdiction?
-10. **Localisation** — one language, or several? Templates and field labels are the
-    affected surfaces, and retrofitting translation into configuration rows is
-    painful.
+Resolved questions are recorded in [ADR 0001](./adr/0001-tech-stack.md) and
+[ADR 0002](./adr/0002-codebase-structure.md). What remains:
+
+1. **Reviewer assignment** — is any reviewer allowed to decide any application, or
+   are applications assigned to specific reviewers? Assignment implies a workload
+   view, reassignment, and a "my queue" screen; open access implies neither. The
+   duplicate gate (§7.5) reduces the risk of uncoordinated approvals but does not
+   remove the question.
+2. **Re-application** — may a rejected startup apply to a later round? This decides
+   whether `UNIQUE (startup_id, round_id)` is sufficient, and whether identity
+   `unique_scope` should default to `round` rather than `global`.
+3. **Malware scanning provider** — the approach is settled (third-party scanning
+   plus frontend and backend validation, §7.3) but the service is not chosen. The
+   `MalwareScanner` port can be written before the decision.
+4. **Post-acceptance stage design** — the programme runs on the platform after
+   acceptance, and the stage engine already supports that with configuration. What
+   is undecided is which post-acceptance features earn their place: progress
+   reports, mentor matching, cohort dashboards.
+5. **Cold storage retrieval SLA** — R2 Infrequent Access retrieval is slower and
+   billed on read. Is that acceptable for a reviewer opening a year-old document,
+   or should recently-archived records stay warm?
+6. **Event capacity policy** — waitlist promotion is automatic or manual? Affects
+   whether a cron job or an admin action drives it.
+
+**Answered since first draft:** single-founder applications (§4.1) · rounds
+supporting both batched and continuous intake (§4.2) · post-acceptance lifecycle
+(§4.6) · review outcomes and the duplicate gate (§7.4, §7.5) · Pingram confirmed
+(§8.3) · retention and archival (§7.7) · localisation (§10) · better-auth schema
+ownership (§12) · API/client contract (ADR 0001).
 
 ---
 
-## 15. Rules for anyone writing code here
+## 16. Rules for anyone writing code here
 
 1. **No hardcoded stages, fields, or document types.** Ever. §1.1.
 2. **Server decides.** The client renders configuration and displays results; it

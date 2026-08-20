@@ -71,7 +71,7 @@ produces hardcoded stages that then have to be torn out.
 6. **Programme surfaces** — announcements, events, support desk
 7. **Reporting & hardening** — dashboards, funnel reporting, exports, rate limiting
 
-Full detail in [§13](./technical-design.md#13-build-sequence).
+Full detail in [§14](./technical-design.md#14-build-sequence).
 
 ---
 
@@ -96,7 +96,7 @@ conventions that agents load before writing code (CONVE-11 to CONVE-19).
 10. **Tests go through HTTP** against real infrastructure, at 100% coverage. Port
     substitution is allowed only to provoke failure paths.
 
-Expanded in [§15](./technical-design.md#15-rules-for-anyone-writing-code-here).
+Expanded in [§16](./technical-design.md#16-rules-for-anyone-writing-code-here).
 
 ---
 
@@ -115,7 +115,7 @@ Decisions still needed, roughly in order of how expensive they get to defer:
 | 7 | Document retention for rejected applicants | Jurisdictional obligations. |
 | 8 | Localisation | Affects templates and field labels stored as configuration. |
 
-Full context in [§14](./technical-design.md#14-open-questions).
+Full context in [§15](./technical-design.md#15-open-questions).
 
 ---
 
